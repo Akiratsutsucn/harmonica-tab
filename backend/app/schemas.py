@@ -84,7 +84,7 @@ class AIGenerateRequest(BaseModel):
 
 class CrawlRequest(BaseModel):
     query: str
-    source: str = "jianpu.cn"
+    source: str = "2qupu.com"
     max_results: int = 10
 
 
