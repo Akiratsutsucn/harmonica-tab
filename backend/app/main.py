@@ -20,6 +20,37 @@ from .pipeline.importer import import_json, import_csv
 
 logger = logging.getLogger(__name__)
 
+async def _handle_ai_generate(params: dict) -> dict:
+    """Generate jianpu via AI and auto-insert into DB."""
+    result = await generate_jianpu(params)
+    if "error" in result:
+        return result
+
+    notes = result.get("notes", [])
+    song = result.get("song", {})
+    if not notes or result.get("validation_errors"):
+        return result
+
+    from .database import DB_PATH
+    import aiosqlite
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO songs (title, artist, key, time_signature, bpm, source, status) VALUES (?,?,?,?,?,?,?)",
+            (song["title"], song["artist"], song["key"], song["time_signature"], song["bpm"], "ai", "pending"),
+        )
+        song_id = cursor.lastrowid
+        for n in notes:
+            await db.execute(
+                "INSERT INTO notes (song_id, measure, position, pitch, duration, dot, tie) VALUES (?,?,?,?,?,?,?)",
+                (song_id, n["measure"], n["position"], n["pitch"], n["duration"],
+                 int(n.get("dot", False)), int(n.get("tie", False))),
+            )
+        await db.commit()
+    result["inserted_song_id"] = song_id
+    return result
+
+
 async def _handle_batch_import(params: dict) -> dict:
     content = params.get("content", "")
     fmt = params.get("format", "json")
@@ -58,7 +89,7 @@ async def _handle_batch_import(params: dict) -> dict:
 
 
 TASK_HANDLERS = {
-    "ai_generate": generate_jianpu,
+    "ai_generate": _handle_ai_generate,
     "crawl": scrape_jianpu,
     "batch_import": _handle_batch_import,
 }
