@@ -1,5 +1,8 @@
 """FastAPI application entry point."""
+import asyncio
+import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,13 +11,69 @@ import os
 from .database import init_db
 from .routes_songs import router as songs_router
 from .routes_mapping import router as mapping_router
+from .routes_admin import router as admin_router
+from . import task_queue
+from .pipeline.ai_generator import generate_jianpu
+from .pipeline.scraper import scrape_jianpu
+from .pipeline.importer import import_json, import_csv
+
+logger = logging.getLogger(__name__)
+
+async def _handle_batch_import(params: dict) -> dict:
+    content = params.get("content", "")
+    fmt = params.get("format", "json")
+    if fmt == "csv":
+        result = await import_csv(content)
+    else:
+        result = await import_json(content)
+
+    # Auto-insert valid songs into DB
+    if "songs" in result:
+        from .database import DB_PATH
+        import aiosqlite
+
+        inserted = 0
+        async with aiosqlite.connect(DB_PATH) as db:
+            for item in result["songs"]:
+                if item.get("validation_errors"):
+                    continue
+                song = item["song"]
+                cursor = await db.execute(
+                    "INSERT INTO songs (title, artist, key, time_signature, bpm, source, status) VALUES (?,?,?,?,?,?,?)",
+                    (song["title"], song["artist"], song["key"], song["time_signature"], song["bpm"], "import", "pending"),
+                )
+                song_id = cursor.lastrowid
+                for n in item["notes"]:
+                    await db.execute(
+                        "INSERT INTO notes (song_id, measure, position, pitch, duration, dot, tie) VALUES (?,?,?,?,?,?,?)",
+                        (song_id, n["measure"], n["position"], n["pitch"], n["duration"],
+                         int(n.get("dot", False)), int(n.get("tie", False))),
+                    )
+                inserted += 1
+            await db.commit()
+        result["inserted"] = inserted
+
+    return result
+
+
+TASK_HANDLERS = {
+    "ai_generate": generate_jianpu,
+    "crawl": scrape_jianpu,
+    "batch_import": _handle_batch_import,
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     await seed_if_empty()
+    consumer = asyncio.create_task(task_queue.consume_loop(TASK_HANDLERS))
     yield
+    consumer.cancel()
+    try:
+        await consumer
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="Harmonica Tab API", lifespan=lifespan)
@@ -28,6 +87,7 @@ app.add_middleware(
 
 app.include_router(songs_router)
 app.include_router(mapping_router)
+app.include_router(admin_router)
 
 # Serve frontend static files if dist exists
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
@@ -54,8 +114,8 @@ async def _seed_songs(db):
     songs = _get_seed_data()
     for song in songs:
         cursor = await db.execute(
-            "INSERT INTO songs (title, artist, key, time_signature, bpm, source, verified) VALUES (?,?,?,?,?,?,?)",
-            (song["title"], song["artist"], song["key"], song["ts"], song["bpm"], "manual", 1),
+            "INSERT INTO songs (title, artist, key, time_signature, bpm, source, verified, status) VALUES (?,?,?,?,?,?,?,?)",
+            (song["title"], song["artist"], song["key"], song["ts"], song["bpm"], "manual", 1, "verified"),
         )
         song_id = cursor.lastrowid
         for note in song["notes"]:
@@ -71,7 +131,6 @@ def _get_seed_data():
         {
             "title": "小星星", "artist": "儿歌", "key": "C", "ts": "4/4", "bpm": 100,
             "notes": [
-                # Twinkle Twinkle Little Star - C major
                 (1,1,"C4","quarter"), (1,2,"C4","quarter"), (1,3,"G4","quarter"), (1,4,"G4","quarter"),
                 (2,1,"A4","quarter"), (2,2,"A4","quarter"), (2,3,"G4","half"),
                 (3,1,"F4","quarter"), (3,2,"F4","quarter"), (3,3,"E4","quarter"), (3,4,"E4","quarter"),
@@ -80,10 +139,6 @@ def _get_seed_data():
                 (6,1,"E4","quarter"), (6,2,"E4","quarter"), (6,3,"D4","half"),
                 (7,1,"G4","quarter"), (7,2,"G4","quarter"), (7,3,"F4","quarter"), (7,4,"F4","quarter"),
                 (8,1,"E4","quarter"), (8,2,"E4","quarter"), (8,3,"D4","half"),
-                (9,1,"C4","quarter"), (9,2,"C4","quarter"), (9,3,"G4","quarter"), (9,4,"G4","quarter"),
-                (10,1,"A4","quarter"), (10,2,"A4","quarter"), (10,3,"G4","half"),
-                (11,1,"F4","quarter"), (11,2,"F4","quarter"), (11,3,"E4","quarter"), (11,4,"E4","quarter"),
-                (12,1,"D4","quarter"), (12,2,"D4","quarter"), (12,3,"C4","half"),
             ],
         },
         {
@@ -100,42 +155,29 @@ def _get_seed_data():
             ],
         },
         {
-            "title": "生日快乐", "artist": "传统", "key": "C", "ts": "3/4", "bpm": 100,
+            "title": "送别", "artist": "李叔同", "key": "C", "ts": "4/4", "bpm": 80,
             "notes": [
-                (1,1,"G4","eighth"), (1,2,"G4","eighth"), (1,3,"A4","quarter"), (1,4,"G4","quarter"),
-                (2,1,"C5","quarter"), (2,2,"B4","half"),
-                (3,1,"G4","eighth"), (3,2,"G4","eighth"), (3,3,"A4","quarter"), (3,4,"G4","quarter"),
-                (4,1,"D5","quarter"), (4,2,"C5","half"),
-                (5,1,"G4","eighth"), (5,2,"G4","eighth"), (5,3,"G5","quarter"), (5,4,"E5","quarter"),
-                (6,1,"C5","quarter"), (6,2,"B4","quarter"), (6,3,"A4","quarter"),
-                (7,1,"F5","eighth"), (7,2,"F5","eighth"), (7,3,"E5","quarter"), (7,4,"C5","quarter"),
-                (8,1,"D5","quarter"), (8,2,"C5","half"),
+                (1,1,"E4","quarter"), (1,2,"G4","quarter",1), (1,3,"E4","eighth"), (1,4,"G4","quarter"),
+                (2,1,"A4","half"), (2,2,"G4","half"),
+                (3,1,"E4","quarter"), (3,2,"D4","quarter"), (3,3,"E4","quarter"), (3,4,"G4","quarter"),
+                (4,1,"D4","whole"),
+                (5,1,"E4","quarter"), (5,2,"G4","quarter",1), (5,3,"E4","eighth"), (5,4,"G4","quarter"),
+                (6,1,"A4","half"), (6,2,"G4","half"),
+                (7,1,"E4","quarter"), (7,2,"D4","quarter"), (7,3,"E4","quarter"), (7,4,"D4","quarter"),
+                (8,1,"C4","whole"),
             ],
         },
         {
-            "title": "茉莉花", "artist": "中国民歌", "key": "C", "ts": "4/4", "bpm": 80,
+            "title": "茉莉花", "artist": "民歌", "key": "C", "ts": "4/4", "bpm": 76,
             "notes": [
                 (1,1,"E4","quarter"), (1,2,"E4","quarter"), (1,3,"F4","quarter"), (1,4,"G4","quarter"),
                 (2,1,"A4","quarter"), (2,2,"A4","quarter"), (2,3,"G4","half"),
-                (3,1,"A4","quarter"), (3,2,"G4","quarter"), (3,3,"F4","quarter"), (3,4,"E4","quarter"),
-                (4,1,"F4","quarter"), (4,2,"E4","quarter"), (4,3,"D4","half"),
-                (5,1,"D4","quarter"), (5,2,"E4","quarter"), (5,3,"F4","quarter"), (5,4,"E4","quarter"),
+                (3,1,"G4","quarter"), (3,2,"A4","quarter"), (3,3,"G4","quarter"), (3,4,"E4","quarter"),
+                (4,1,"D4","half"), (4,2,"E4","half"),
+                (5,1,"C4","quarter"), (5,2,"D4","quarter"), (5,3,"E4","quarter"), (5,4,"E4","quarter"),
                 (6,1,"D4","quarter"), (6,2,"C4","quarter"), (6,3,"D4","half"),
-                (7,1,"E4","quarter"), (7,2,"F4","quarter"), (7,3,"E4","quarter"), (7,4,"D4","quarter"),
-                (8,1,"C4","whole"),
-            ],
-        },
-        {
-            "title": "送别", "artist": "李叔同", "key": "C", "ts": "4/4", "bpm": 76,
-            "notes": [
-                (1,1,"E4","quarter"), (1,2,"G4","quarter",1), (1,3,"E4","eighth"), (1,4,"G4","quarter"),
-                (2,1,"C5","half"), (2,2,"B4","quarter"), (2,3,"A4","quarter"),
-                (3,1,"A4","quarter"), (3,2,"G4","quarter",1), (3,3,"E4","eighth"), (3,4,"D4","quarter"),
-                (4,1,"E4","whole"),
-                (5,1,"E4","quarter"), (5,2,"G4","quarter",1), (5,3,"E4","eighth"), (5,4,"G4","quarter"),
-                (6,1,"C5","half"), (6,2,"B4","quarter"), (6,3,"A4","quarter"),
-                (7,1,"A4","quarter"), (7,2,"G4","quarter",1), (7,3,"D4","eighth"), (7,4,"E4","quarter"),
-                (8,1,"C4","whole"),
+                (7,1,"E4","quarter"), (7,2,"G4","quarter"), (7,3,"A4","quarter"), (7,4,"G4","quarter"),
+                (8,1,"E4","half"), (8,2,"D4","half"),
             ],
         },
         {

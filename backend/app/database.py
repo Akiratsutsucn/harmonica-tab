@@ -16,6 +16,7 @@ async def get_db():
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA foreign_keys = ON")
         await db.executescript("""
             CREATE TABLE IF NOT EXISTS songs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,6 +27,7 @@ async def init_db():
                 bpm INTEGER DEFAULT 120,
                 source TEXT DEFAULT 'manual',
                 verified INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'verified',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -41,7 +43,23 @@ async def init_db():
                 FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                params TEXT DEFAULT '{}',
+                result TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_notes_song ON notes(song_id, measure, position);
             CREATE INDEX IF NOT EXISTS idx_songs_title ON songs(title);
+            CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
         """)
+        # Migrate existing songs table if status column missing
+        try:
+            await db.execute("SELECT status FROM songs LIMIT 1")
+        except Exception:
+            await db.execute("ALTER TABLE status TEXT DEFAULT 'verified'")
         await db.commit()

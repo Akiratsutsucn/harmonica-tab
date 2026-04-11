@@ -18,12 +18,12 @@ async def search_songs(
     offset = (page - 1) * limit
     if q:
         rows = await db.execute_fetchall(
-            "SELECT * FROM songs WHERE title LIKE ? OR artist LIKE ? ORDER BY title LIMIT ? OFFSET ?",
+            "SELECT * FROM songs WHERE status='verified' AND (title LIKE ? OR artist LIKE ?) ORDER BY title LIMIT ? OFFSET ?",
             (f"%{q}%", f"%{q}%", limit, offset),
         )
     else:
         rows = await db.execute_fetchall(
-            "SELECT * FROM songs ORDER BY title LIMIT ? OFFSET ?",
+            "SELECT * FROM songs WHERE status='verified' ORDER BY title LIMIT ? OFFSET ?",
             (limit, offset),
         )
     return [dict(r) for r in rows]
