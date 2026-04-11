@@ -83,13 +83,19 @@ def validate_notes(notes: list[dict], time_signature: str = "4/4") -> list[str]:
             errors.append(f"无效时值: {duration}")
 
     # Measure duration check
-    for m_num, m_notes in sorted(measures.items()):
+    sorted_measures = sorted(measures.items())
+    first_m = sorted_measures[0][0] if sorted_measures else None
+    last_m = sorted_measures[-1][0] if sorted_measures else None
+    for m_num, m_notes in sorted_measures:
         total = 0.0
         for n in m_notes:
             dur = DURATION_VALUES.get(n.get("duration", "quarter"), 1.0)
             if n.get("dot"):
                 dur *= 1.5
             total += dur
+        # Allow pickup (anacrusis) measures: first/last measure may be shorter
+        if m_num in (first_m, last_m) and total < measure_duration + 0.01:
+            continue
         if abs(total - measure_duration) > 0.01:
             errors.append(f"第{m_num}小节时值不匹配: 期望{measure_duration}拍, 实际{total}拍")
 
