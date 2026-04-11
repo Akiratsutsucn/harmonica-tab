@@ -257,9 +257,9 @@ body {
   top: -2px;
 }
 
-.octave-dot { font-size: 8px; line-height: 1; letter-spacing: 2px; }
-.octave-dot.above { margin-bottom: -2px; }
-.octave-dot.below { margin-top: -2px; }
+.octave-dot { font-size: 16px; font-weight: 700; line-height: 1; letter-spacing: 3px; }
+.octave-dot.above { margin-bottom: -4px; }
+.octave-dot.below { margin-top: -4px; }
 
 .duration-line {
   width: 80%;
