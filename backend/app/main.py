@@ -125,8 +125,8 @@ async def _seed_songs(db):
     songs = _get_seed_data()
     for song in songs:
         cursor = await db.execute(
-            "INSERT INTO songs (title, artist, key, time_signature, bpm, source, verified, status) VALUES (?,?,?,?,?,?,?,?)",
-            (song["title"], song["artist"], song["key"], song["ts"], song["bpm"], "manual", 1, "verified"),
+            "INSERT INTO songs (title, artist, key, time_signature, bpm, difficulty, source, verified, status) VALUES (?,?,?,?,?,?,?,?,?)",
+            (song["title"], song["artist"], song["key"], song["ts"], song["bpm"], song.get("difficulty", 1), "manual", 1, "verified"),
         )
         song_id = cursor.lastrowid
         for note in song["notes"]:
@@ -138,6 +138,12 @@ async def _seed_songs(db):
 
 def _get_seed_data():
     """Return seed song data. Each note: (measure, position, pitch, duration, dot?, tie?)"""
+    from .seed_songs import get_seed_data
+    return get_seed_data()
+
+
+def _get_seed_data_legacy():
+    """Legacy inline seed data (kept for reference)."""
     return [
         {
             "title": "小星星", "artist": "儿歌", "key": "C", "ts": "4/4", "bpm": 100,

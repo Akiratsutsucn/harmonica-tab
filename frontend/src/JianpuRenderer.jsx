@@ -1,15 +1,6 @@
 import { useMemo } from 'react';
 
-/**
- * Renders jianpu (numbered musical notation) with harmonica hole annotations.
- *
- * Props:
- *   notes: array of {measure, position, pitch, duration, dot, tie}
- *   mapping: array of hole mappings from API
- *   timeSignature: string like '4/4'
- */
-export default function JianpuRenderer({ notes = [], mapping = [], timeSignature = '4/4' }) {
-  // Build a lookup: pitch -> {hole, action}
+export default function JianpuRenderer({ notes = [], mapping = [], timeSignature = '4/4', highlightNote = null }) {
   const holeLookup = useMemo(() => {
     const lookup = {};
     if (!mapping.length) return lookup;
@@ -22,7 +13,6 @@ export default function JianpuRenderer({ notes = [], mapping = [], timeSignature
     return lookup;
   }, [mapping]);
 
-  // Group notes by measure
   const measures = useMemo(() => {
     const map = {};
     for (const n of notes) {
@@ -44,7 +34,12 @@ export default function JianpuRenderer({ notes = [], mapping = [], timeSignature
         {measures.map((measureNotes, mi) => (
           <div className="measure" key={mi}>
             {measureNotes.map((note, ni) => (
-              <NoteColumn key={ni} note={note} holeLookup={holeLookup} />
+              <NoteColumn
+                key={ni}
+                note={note}
+                holeLookup={holeLookup}
+                isHighlighted={highlightNote && highlightNote.measure === note.measure && highlightNote.position === note.position}
+              />
             ))}
           </div>
         ))}
@@ -66,60 +61,45 @@ export default function JianpuRenderer({ notes = [], mapping = [], timeSignature
 const NOTE_NAMES = { C: '1', D: '2', E: '3', F: '4', G: '5', A: '6', B: '7' };
 
 function pitchToJianpu(pitch) {
-  // Parse pitch like "C4", "C#5", "Bb3"
   const match = pitch.match(/^([A-G])(#|b)?(\d)$/);
   if (!match) return { num: '0', octaveDots: 0, sharp: false };
   const [, name, accidental, octStr] = match;
   const octave = parseInt(octStr);
   return {
     num: NOTE_NAMES[name] || '0',
-    octaveDots: octave - 4, // 4 = middle octave
+    octaveDots: octave - 4,
     sharp: accidental === '#',
     flat: accidental === 'b',
   };
 }
 
 function durationLines(duration) {
-  // eighth = 1 line, sixteenth = 2 lines
   if (duration === 'eighth') return 1;
   if (duration === 'sixteenth') return 2;
   return 0;
 }
 
-function NoteColumn({ note, holeLookup }) {
+function NoteColumn({ note, holeLookup, isHighlighted = false }) {
   const jp = pitchToJianpu(note.pitch);
   const holeInfo = holeLookup[note.pitch];
   const lines = durationLines(note.duration);
 
   return (
-    <div className="note-col">
-      {/* Octave dots above */}
+    <div className={`note-col${isHighlighted ? ' highlight' : ''}`}>
       {jp.octaveDots > 0 && (
-        <div className="octave-dot above">
-          {'·'.repeat(jp.octaveDots)}
-        </div>
+        <div className="octave-dot above">{'·'.repeat(jp.octaveDots)}</div>
       )}
-
-      {/* Jianpu number */}
       <div className={`jianpu-num${jp.sharp ? ' sharp' : ''}`}>
         {jp.flat && <span style={{ fontSize: 12, position: 'absolute', left: -8, top: -2 }}>♭</span>}
         {jp.num}
         {note.dot ? '·' : ''}
       </div>
-
-      {/* Octave dots below */}
       {jp.octaveDots < 0 && (
-        <div className="octave-dot below">
-          {'·'.repeat(Math.abs(jp.octaveDots))}
-        </div>
+        <div className="octave-dot below">{'·'.repeat(Math.abs(jp.octaveDots))}</div>
       )}
-
-      {/* Duration underlines (eighth, sixteenth) */}
       {Array.from({ length: lines }).map((_, i) => (
         <div className="duration-line" key={i} />
       ))}
-
-      {/* Harmonica hole annotation */}
       {holeInfo ? (
         <div className={`hole-tag ${holeInfo.action}`}>
           {holeInfo.hole}{holeInfo.action === 'blow' ? '↑' : '↓'}

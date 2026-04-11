@@ -62,4 +62,9 @@ async def init_db():
             await db.execute("SELECT status FROM songs LIMIT 1")
         except Exception:
             await db.execute("ALTER TABLE status TEXT DEFAULT 'verified'")
+        # Migrate: add difficulty column if missing
+        try:
+            await db.execute("SELECT difficulty FROM songs LIMIT 1")
+        except Exception:
+            await db.execute("ALTER TABLE songs ADD COLUMN difficulty INTEGER DEFAULT 1")
         await db.commit()

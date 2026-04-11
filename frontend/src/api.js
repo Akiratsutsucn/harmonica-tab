@@ -4,8 +4,8 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
-export const searchSongs = (q = '', page = 1) =>
-  api.get('/songs', { params: { q, page } }).then(r => r.data);
+export const searchSongs = (q = '', page = 1, difficulty = null) =>
+  api.get('/songs', { params: { q, page, ...(difficulty ? { difficulty } : {}) } }).then(r => r.data);
 
 export const getHotSongs = () =>
   api.get('/songs/hot').then(r => r.data);

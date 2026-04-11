@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { SearchBar, Tag, Selector } from 'antd-mobile';
 import { searchSongs, getHotSongs, getSong, getMapping, batchSongs } from './api';
 import JianpuRenderer from './JianpuRenderer';
+import PlayBar from './PlayBar';
+import DifficultyBadge from './DifficultyBadge';
+import AudioEngine from './AudioEngine';
 import './index.css';
 
 const KEYS = ['C', 'D', 'E', 'F', 'G', 'A', 'Bb'];
@@ -9,14 +12,17 @@ const TUNINGS = [
   { label: 'Paddy Richter', value: 'paddy' },
   { label: '标准 Richter', value: 'standard' },
 ];
+const DIFF_FILTERS = [
+  { label: '全部', value: null },
+  { label: '入门', value: 1 },
+  { label: '初级', value: 2 },
+  { label: '中级', value: 3 },
+];
 
-// --- Favorites helpers (localStorage) ---
 function getFavIds() {
   try { return JSON.parse(localStorage.getItem('fav_ids') || '[]'); } catch { return []; }
 }
-function setFavIds(ids) {
-  localStorage.setItem('fav_ids', JSON.stringify(ids));
-}
+function setFavIds(ids) { localStorage.setItem('fav_ids', JSON.stringify(ids)); }
 function toggleFav(id) {
   const ids = getFavIds();
   const next = ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id];
@@ -25,177 +31,174 @@ function toggleFav(id) {
 }
 
 export default function App() {
-  const [view, setView] = useState('list'); // 'list' | 'sheet'
+  const [view, setView] = useState('list');
   const [songs, setSongs] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState('all'); // 'all' | 'fav'
+  const [tab, setTab] = useState('all');
   const [favIds, setFavIdsState] = useState(getFavIds);
+  const [diffFilter, setDiffFilter] = useState(null);
 
-  // Sheet view state
   const [currentSong, setCurrentSong] = useState(null);
   const [hKey, setHKey] = useState('C');
   const [tuning, setTuning] = useState('paddy');
   const [mapping, setMapping] = useState([]);
   const [zoom, setZoom] = useState(1);
+  const [highlightNote, setHighlightNote] = useState(null);
 
-  // Load hot songs on mount
+  const engineRef = useRef(null);
+
+  useEffect(() => {
+    engineRef.current = new AudioEngine();
+    return () => { if (engineRef.current) engineRef.current.destroy(); };
+  }, []);
+
   useEffect(() => {
     getHotSongs().then(setSongs).catch(() => {});
   }, []);
 
-  // Search
   const handleSearch = useCallback((val) => {
     setQuery(val);
     setTab('all');
-    if (!val.trim()) {
+    if (!val.trim() && diffFilter == null) {
       getHotSongs().then(setSongs);
       return;
     }
     setLoading(true);
-    searchSongs(val).then(setSongs).finally(() => setLoading(false));
-  }, []);
+    searchSongs(val, 1, diffFilter).then(setSongs).finally(() => setLoading(false));
+  }, [diffFilter]);
 
-  // Open song
+  const handleDiffFilter = useCallback((val) => {
+    setDiffFilter(val);
+    setTab('all');
+    setLoading(true);
+    searchSongs(query, 1, val).then(setSongs).finally(() => setLoading(false));
+  }, [query]);
+
   const openSong = useCallback(async (id) => {
     setLoading(true);
     try {
-      const [song, map] = await Promise.all([
-        getSong(id),
-        getMapping(hKey, tuning),
-      ]);
+      const [song, map] = await Promise.all([getSong(id), getMapping(hKey, tuning)]);
       setCurrentSong(song);
       setMapping(map.holes);
       setView('sheet');
       setZoom(1);
-    } finally {
-      setLoading(false);
-    }
+      setHighlightNote(null);
+    } finally { setLoading(false); }
   }, [hKey, tuning]);
 
-  // Reload mapping when key/tuning changes
   useEffect(() => {
     if (view !== 'sheet') return;
     getMapping(hKey, tuning).then(r => setMapping(r.holes));
   }, [hKey, tuning, view]);
 
-  const goBack = () => {
+  const goBack = useCallback(() => {
+    if (engineRef.current) engineRef.current.stop();
+    setHighlightNote(null);
     setView('list');
-    setCurrentSong(null);
-  };
+  }, []);
 
-  // Toggle favorite
-  const handleToggleFav = (id) => {
+  const handleToggleFav = useCallback((id) => {
     const next = toggleFav(id);
     setFavIdsState(next);
-  };
+  }, []);
 
-  // Show favorites tab
-  const showFavorites = useCallback(async () => {
+  const showFavorites = useCallback(() => {
     setTab('fav');
-    setQuery('');
     const ids = getFavIds();
-    if (ids.length === 0) {
-      setSongs([]);
-      return;
-    }
+    if (ids.length === 0) { setSongs([]); return; }
     setLoading(true);
-    try {
-      const data = await batchSongs(ids);
-      setSongs(data);
-    } finally {
-      setLoading(false);
-    }
+    batchSongs(ids).then(setSongs).finally(() => setLoading(false));
   }, []);
 
   const showAll = useCallback(() => {
     setTab('all');
-    setQuery('');
-    getHotSongs().then(setSongs);
+    if (query) { searchSongs(query, 1, diffFilter).then(setSongs); }
+    else { getHotSongs().then(setSongs); }
+  }, [query, diffFilter]);
+
+  const handleNoteHighlight = useCallback((note) => {
+    setHighlightNote(note);
   }, []);
 
-  // Sheet view
   if (view === 'sheet' && currentSong) {
-    const isFav = favIds.includes(currentSong.id);
     return (
       <div className="app">
         <div className="sheet-header">
-          <span className="back" onClick={goBack} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && goBack()}>←</span>
+          <span className="back" onClick={goBack}>←</span>
           <div className="sheet-info">
             <h2>{currentSong.title}</h2>
             <div className="meta">
               {currentSong.artist && <span>{currentSong.artist}</span>}
               <span>{currentSong.key}调</span>
               <span>{currentSong.time_signature}</span>
-              <span>♩={currentSong.bpm}</span>
+              <DifficultyBadge difficulty={currentSong.difficulty} />
             </div>
           </div>
           <button
-            className={`fav-btn${isFav ? ' active' : ''}`}
+            className={`fav-btn-sm${favIds.includes(currentSong.id) ? ' active' : ''}`}
             onClick={() => handleToggleFav(currentSong.id)}
-            aria-label={isFav ? '取消收藏' : '收藏'}
           >
-            {isFav ? '★' : '☆'}
+            {favIds.includes(currentSong.id) ? '★' : '☆'}
           </button>
         </div>
 
         <div className="controls">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ fontSize: 12, color: '#999' }}>口琴调:</span>
-            {KEYS.map(k => (
-              <Tag
-                key={k}
-                color={hKey === k ? 'primary' : 'default'}
-                onClick={() => setHKey(k)}
-                style={{ cursor: 'pointer' }}
-              >
-                {k}
-              </Tag>
-            ))}
-          </div>
-          <Selector
-            options={TUNINGS}
-            value={[tuning]}
-            onChange={v => v.length && setTuning(v[0])}
-            style={{ fontSize: 12 }}
-          />
+          <Tag color={hKey === 'C' ? 'primary' : 'default'}>调性:</Tag>
+          {KEYS.map(k => (
+            <Tag key={k} color={hKey === k ? 'primary' : 'default'}
+              onClick={() => setHKey(k)} style={{ cursor: 'pointer' }}>{k}</Tag>
+          ))}
         </div>
 
         <div className="zoom-controls">
-          <button onClick={() => setZoom(z => Math.max(0.6, z - 0.1))}>−</button>
+          <button onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}>−</button>
           <span>{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom(z => Math.min(1.6, z + 0.1))}>+</button>
-          <button onClick={() => setZoom(1)}>重置</button>
+          <button onClick={() => setZoom(z => Math.min(2, z + 0.1))}>+</button>
         </div>
 
         <div className="sheet-scroll-area">
-          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', minWidth: zoom < 1 ? `${100 / zoom}%` : 'auto' }}>
+          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
             <JianpuRenderer
-              notes={currentSong.notes}
+              notes={currentSong.notes || []}
               mapping={mapping}
               timeSignature={currentSong.time_signature}
+              highlightNote={highlightNote}
             />
           </div>
         </div>
+
+        <PlayBar
+          engine={engineRef.current}
+          notes={currentSong.notes || []}
+          bpm={currentSong.bpm || 120}
+          onNoteHighlight={handleNoteHighlight}
+        />
       </div>
     );
   }
 
-  // List view
   return (
     <div className="app">
       <div className="header">
         <h1>🎵 口琴简谱</h1>
-        <p>搜索歌曲 · 查看简谱 · 对照孔位</p>
+        <p>Paddy Richter · 10孔布鲁斯口琴</p>
       </div>
 
       <div className="search-bar">
-        <SearchBar
-          placeholder="搜索歌名或歌手"
-          value={query}
-          onChange={handleSearch}
-          onSearch={handleSearch}
-        />
+        <SearchBar placeholder="搜索歌曲或歌手" value={query} onChange={handleSearch} />
+      </div>
+
+      <div className="filter-bar">
+        {DIFF_FILTERS.map(f => (
+          <button
+            key={String(f.value)}
+            className={`filter-tag${diffFilter === f.value ? ' active' : ''}`}
+            onClick={() => handleDiffFilter(f.value)}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       <div className="tab-bar">
@@ -221,13 +224,12 @@ export default function App() {
               <div className="meta">
                 {song.artist && <span>{song.artist}</span>}
                 <span>{song.key}调</span>
-                <span>{song.time_signature}</span>
+                <DifficultyBadge difficulty={song.difficulty} />
               </div>
             </div>
             <button
               className={`fav-btn-sm${favIds.includes(song.id) ? ' active' : ''}`}
               onClick={(e) => { e.stopPropagation(); handleToggleFav(song.id); }}
-              aria-label={favIds.includes(song.id) ? '取消收藏' : '收藏'}
             >
               {favIds.includes(song.id) ? '★' : '☆'}
             </button>

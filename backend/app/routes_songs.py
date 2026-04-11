@@ -11,21 +11,26 @@ router = APIRouter(prefix="/api/songs", tags=["songs"])
 @router.get("", response_model=list[SongOut])
 async def search_songs(
     q: str = Query("", description="Search by title or artist"),
+    difficulty: int | None = Query(None, ge=1, le=3, description="1=入门 2=初级 3=中级"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: aiosqlite.Connection = Depends(get_db),
 ):
     offset = (page - 1) * limit
+    conditions = ["status='verified'"]
+    params = []
     if q:
-        rows = await db.execute_fetchall(
-            "SELECT * FROM songs WHERE status='verified' AND (title LIKE ? OR artist LIKE ?) ORDER BY title LIMIT ? OFFSET ?",
-            (f"%{q}%", f"%{q}%", limit, offset),
-        )
-    else:
-        rows = await db.execute_fetchall(
-            "SELECT * FROM songs WHERE status='verified' ORDER BY title LIMIT ? OFFSET ?",
-            (limit, offset),
-        )
+        conditions.append("(title LIKE ? OR artist LIKE ?)")
+        params.extend([f"%{q}%", f"%{q}%"])
+    if difficulty is not None:
+        conditions.append("difficulty = ?")
+        params.append(difficulty)
+    where = " AND ".join(conditions)
+    params.extend([limit, offset])
+    rows = await db.execute_fetchall(
+        f"SELECT * FROM songs WHERE {where} ORDER BY title LIMIT ? OFFSET ?",
+        params,
+    )
     return [dict(r) for r in rows]
 
 

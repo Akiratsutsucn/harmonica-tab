@@ -15,6 +15,7 @@ class SongOut(SongBase):
     source: str = "manual"
     verified: bool = False
     status: str = "verified"
+    difficulty: int = 1
 
 
 class NoteOut(BaseModel):
@@ -83,7 +84,7 @@ class AIGenerateRequest(BaseModel):
 
 class CrawlRequest(BaseModel):
     query: str
-    source: str = "tan8"
+    source: str = "jianpu.cn"
     max_results: int = 10
 
 
