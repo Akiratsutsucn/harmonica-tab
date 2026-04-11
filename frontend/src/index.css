@@ -51,6 +51,43 @@ body {
   border-bottom: 1px solid #eee;
 }
 
+/* Tab bar */
+.tab-bar {
+  display: flex;
+  padding: 0 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.tab-item {
+  flex: 1;
+  padding: 10px 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-item.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 500;
+}
+
+.fav-count {
+  display: inline-block;
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 8px;
+  margin-left: 4px;
+  line-height: 16px;
+}
+
 .song-list {
   padding: 8px 16px;
 }
@@ -60,10 +97,17 @@ body {
   border-bottom: 1px solid #f0f0f0;
   cursor: pointer;
   transition: background 0.15s;
+  display: flex;
+  align-items: center;
 }
 
 .song-card:active {
   background: #f8f8f8;
+}
+
+.song-card-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .song-card .title {
@@ -81,6 +125,37 @@ body {
   margin-right: 12px;
 }
 
+/* Favorite buttons */
+.fav-btn {
+  font-size: 22px;
+  color: #ccc;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.fav-btn.active {
+  color: #faad14;
+}
+
+.fav-btn-sm {
+  font-size: 18px;
+  color: #ddd;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.fav-btn-sm.active {
+  color: #faad14;
+}
+
 .sheet-header {
   padding: 16px;
   display: flex;
@@ -93,6 +168,10 @@ body {
   font-size: 20px;
   cursor: pointer;
   padding: 4px;
+}
+
+.sheet-info {
+  flex: 1;
 }
 
 .sheet-info h2 {
@@ -113,10 +192,45 @@ body {
   border-bottom: 1px solid #eee;
 }
 
-.sheet-canvas-wrap {
-  padding: 12px 8px;
-  overflow-x: auto;
+/* Zoom controls */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-bottom: 1px solid #eee;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.zoom-controls button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-controls button:active {
+  background: #f0f0f0;
+}
+
+/* Sheet scroll area */
+.sheet-scroll-area {
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
+  padding: 12px 8px;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.sheet-canvas-wrap {
+  padding: 0;
 }
 
 .measure-row {

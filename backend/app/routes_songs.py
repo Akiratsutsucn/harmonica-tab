@@ -32,10 +32,22 @@ async def search_songs(
 @router.get("/hot", response_model=list[SongOut])
 async def hot_songs(db: aiosqlite.Connection = Depends(get_db)):
     rows = await db.execute_fetchall(
-        "SELECT * FROM songs WHERE verified = 1 ORDER BY RANDOM() LIMIT 10"
+        "SELECT * FROM songs WHERE status='verified' ORDER BY RANDOM() LIMIT 10"
     )
     if not rows:
         rows = await db.execute_fetchall("SELECT * FROM songs ORDER BY id LIMIT 10")
+    return [dict(r) for r in rows]
+
+
+@router.post("/batch", response_model=list[SongOut])
+async def batch_songs(ids: list[int], db: aiosqlite.Connection = Depends(get_db)):
+    """Get multiple songs by IDs (for favorites)."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    rows = await db.execute_fetchall(
+        f"SELECT * FROM songs WHERE id IN ({placeholders}) AND status='verified'", ids
+    )
     return [dict(r) for r in rows]
 
 

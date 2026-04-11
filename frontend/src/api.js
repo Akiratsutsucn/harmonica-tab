@@ -16,5 +16,8 @@ export const getSong = (id) =>
 export const getMapping = (key = 'C', tuning = 'paddy') =>
   api.get(`/mapping/${key}`, { params: { tuning } }).then(r => r.data);
 
+export const batchSongs = (ids) =>
+  api.post('/songs/batch', ids).then(r => r.data);
+
 export const getKeys = () =>
   api.get('/mapping').then(r => r.data);
