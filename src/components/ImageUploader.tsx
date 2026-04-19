@@ -82,7 +82,13 @@ export default function ImageUploader({
     onImagesChange(swapped);
   }
 
-  function remove(index: number) {
+  async function remove(index: number) {
+    const img = images[index];
+    try {
+      await fetch(`/api/upload/image/${img.id}`, { method: "DELETE" });
+    } catch {
+      // best-effort; proceed with local removal regardless
+    }
     onImagesChange(images.filter((_, i) => i !== index));
   }
 
