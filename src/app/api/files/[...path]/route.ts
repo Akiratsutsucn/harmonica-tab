@@ -23,8 +23,13 @@ export async function GET(_req: NextRequest, { params }: Context) {
     return new Response("Forbidden", { status: 403 });
   }
 
+  // Only allow access to uploads directory
+  if (segments[0] !== "uploads") {
+    return new Response("Forbidden", { status: 403 });
+  }
+
   const relPath = segments.join("/");
-  const absPath = path.join(process.cwd(), "uploads", relPath);
+  const absPath = path.join(process.cwd(), relPath);
 
   if (!fs.existsSync(absPath)) {
     return new Response("Not Found", { status: 404 });
