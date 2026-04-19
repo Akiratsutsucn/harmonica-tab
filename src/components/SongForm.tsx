@@ -24,11 +24,30 @@ export default function SongForm({ mode, initialData }: SongFormProps) {
   const [audioUrl, setAudioUrl] = useState(
     initialData?.audioType === "url" ? (initialData.audioPath ?? "") : ""
   );
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [images, setImages] = useState<SongImage[]>(initialData?.images ?? []);
   const [songId, setSongId] = useState<number | null>(initialData?.id ?? null);
   const [saved, setSaved] = useState(mode === "edit");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function handleImageSelect(files: FileList | null) {
+    if (!files) return;
+    const accepted = Array.from(files).filter((f) =>
+      ["image/jpeg", "image/png", "image/webp"].includes(f.type)
+    );
+    if (accepted.length === 0) return;
+    setImageFiles((prev) => [...prev, ...accepted]);
+    const newPreviews = accepted.map((f) => URL.createObjectURL(f));
+    setImagePreviews((prev) => [...prev, ...newPreviews]);
+  }
+
+  function removeImagePreview(index: number) {
+    URL.revokeObjectURL(imagePreviews[index]);
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,7 +89,16 @@ export default function SongForm({ mode, initialData }: SongFormProps) {
           if (!putRes.ok) throw new Error("保存音频链接失败");
         }
 
-        setSaved(true);
+        // Step 3: upload images
+        for (const file of imageFiles) {
+          const fd = new FormData();
+          fd.append("file", file);
+          fd.append("songId", String(id));
+          const imgRes = await fetch("/api/upload/image", { method: "POST", body: fd });
+          if (!imgRes.ok) throw new Error("图片上传失败");
+        }
+
+        router.push(`/song/${id}`);
       } else {
         // Edit mode
         id = initialData!.id;
@@ -186,6 +214,39 @@ export default function SongForm({ mode, initialData }: SongFormProps) {
               />
             )}
           </div>
+
+          {/* Images (add mode) */}
+          {mode === "add" && (
+            <div>
+              <label className="block text-sm font-medium text-warm-700 mb-2">
+                乐谱图片
+              </label>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={(e) => handleImageSelect(e.target.files)}
+                className="block w-full text-sm text-warm-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-warm-100 file:text-warm-700 hover:file:bg-warm-200"
+              />
+              {imagePreviews.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {imagePreviews.map((src, i) => (
+                    <div key={i} className="relative group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={src} alt={`预览 ${i + 1}`} className="w-16 h-16 object-cover rounded-lg border border-warm-200" />
+                      <button
+                        type="button"
+                        onClick={() => removeImagePreview(i)}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="text-red-500 text-sm">{error}</p>
