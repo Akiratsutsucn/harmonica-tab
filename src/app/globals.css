@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-warm-50: #faf6f0;
+  --color-warm-100: #f0e8d8;
+  --color-warm-200: #e0d5c5;
+  --color-warm-300: #c4a882;
+  --color-warm-400: #a67c2e;
+  --color-warm-500: #8b6914;
+  --color-warm-600: #6b5010;
+  --color-warm-700: #4a370b;
+  --color-warm-800: #3a2e1a;
+  --color-warm-900: #2a1f0f;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+}
